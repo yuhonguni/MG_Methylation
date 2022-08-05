@@ -1,5 +1,6 @@
 library("ChAMP")
 library(tidyverse)
+library("ggplot2")
 #methylation
 Methy_THYM<-read_tsv(file="C:/Users/yuhon/Documents/TCGApaper/GDCdata/TCGA-THYM/legacy/TCGA.THYM.sampleMap_HumanMethylation450/HumanMethylation450",
 )
