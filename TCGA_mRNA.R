@@ -5,7 +5,9 @@ library(kableExtra)
 library(ggfortify)
 library(ggrepel)
 
-#getwd()
+getwd()
+
+
 setwd("C:/Users/yuhon/Documents") #laptop
 #setwd("C:/Users/Administrator/Documents") # desktop
 source('./PostDocProject/NSC_RNAseq/RNA_seq/functions.R')

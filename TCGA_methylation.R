@@ -42,9 +42,6 @@ row.names(met_THYM_m)<-met_THYM$sample
 
 met_THYM_m<-na.omit(met_THYM_m)
 
-head(met_THYM_m)
-
-View(met_THYM_m)
 
 
 
@@ -64,13 +61,14 @@ View(met_THYM_m)
 
 myNorm_met<-read.csv("tcga_met_normalization_update_MG_status_20220716.csv",check.names = F)
 row.names(myNorm_met)<-myNorm_met$gene_id
-myNorm_met<-myNorm_met[,-1]
+myNorm_met<-myNorm_met[,-1] %>% as.matrix %>% na.omit(myNorm_met)
 
-head(myload_met$beta)
+myNorm_met<-na.omit(myNorm_met)
+
 head(myNorm_met)
 
 #DMPs 分析
-myDMP <- champ.DMP(beta = myNorm_met,pheno=met_meta$MG,adjPVal = 1)
+myDMP <- champ.DMP(beta = myNorm_met,pheno=met_meta$MG,adjPVal = 1) # DMP analysis us limma package
 
 myDMP$NO_to_YES %>% filter(gene == "TTN")
 myDMP$NO_to_YES %>% filter(gene == "CHRNA1")
@@ -89,7 +87,17 @@ myDMP$NO_to_YES %>% filter(gene == "KCNA4")
 ?champ.DMP
 
 #DMR 分析
-myDMR <- champ.DMR(beta=myNorm_met,pheno=met_meta$MG,method="Bumphunter",cores = 14)
+myDMR <- champ.DMR(beta=myNorm_met,pheno=met_meta$MG,method="DMRcate",cores = 10)
+
+
+?dmrcate
+
+dmrcate
+
+class(myNorm_met)
+
+
+champ.DMR
 
 DMR.GUI(DMR=myDMR,
          beta=myNorm_met,
@@ -99,7 +107,7 @@ DMR.GUI(DMR=myDMR,
          arraytype="450K")
 
 #GSEA 分析
-myGSEA <- champ.GSEA(beta=myNorm_met,DMP=myDMP[[1]], DMR=myDMR, arraytype="450K",adjPval=0.05, method="fisher")
+myGSEA <- champ.GSEA(beta=myNorm_met,DMP=myDMP[[1]], DMR=myDMR, arraytype="450K",adjPval=1, method="fisher")
 
 View(myGSEA$DMP)
 
@@ -179,10 +187,50 @@ sp_TTN + scale_x_continuous(breaks=c(TTN_from,TTN_to))
 sp_NEFM + scale_x_continuous(breaks=c(NEFM_from,NEFM_to)) +geom_vline(xintercept = c(NEFM_from,NEFM_to), size = 0.5,
                                                                       color = "firebrick", linetype = "dashed")
 
-?geom_ribbon
-
-?geom_hline
+#dmrcate  analysis
 
 
-?scale_x_continuous
-scale_x_discrete
+# use champ.DMR function
+
+M_myNorm_met<-logit2(myNorm_met) %>% na.omit()
+
+
+group<-factor(met_meta$MG) 
+design<-model.matrix(~group)
+
+myannotation <- cpg.annotate(datatype = "array", 
+                             fdr = 0.1, M_myNorm_met, design = design, coef = 2, 
+                             analysis.type = "differential", annotation = c(array = "IlluminaHumanMethylation450k", 
+                                                                            annotation = "ilmn12.hg19"), what = "M")
+
+
+dmrcoutput <- dmrcate(myannotation, lambda=1000, C=2)
+
+results.ranges <- extractRanges(dmrcoutput, genome = "hg19")
+
+View(results.ranges)
+
+groups <- c(YES="magenta", NO="forestgreen")
+cols <- groups[met_meta$MG[1:30]]
+
+
+
+plot<-DMR.plot(ranges=results.ranges, dmr=705, CpGs=myNorm_met[,1:30], what="Beta",
+         arraytype = "450K", genome="hg19",phen.col=cols)
+
+
+# library(Gviz)
+
+str_extract(results.ranges$overlapping.genes,pattern = "NEFM")
+str_extract(results.ranges$overlapping.genes,pattern = "NEFL")
+
+gene_list<-str_split(results.ranges$overlapping.genes,pattern = ", ")
+
+
+
+
+na.omit(unlist (gene_list, recursive = TRUE))
+
+
+
+
