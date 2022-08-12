@@ -2,7 +2,7 @@ library("ChAMP")
 library(tidyverse)
 library("ggplot2")
 #methylation
-Methy_THYM<-read_tsv(file="C:/Users/yuhon/Documents/TCGApaper/GDCdata/TCGA-THYM/legacy/TCGA.THYM.sampleMap_HumanMethylation450/HumanMethylation450",
+#Methy_THYM<-read_tsv(file="C:/Users/yuhon/Documents/TCGApaper/GDCdata/TCGA-THYM/legacy/TCGA.THYM.sampleMap_HumanMethylation450/HumanMethylation450",
 )
 colnames(Methy_THYM)[2:length(Methy_THYM)]<-substr(colnames(Methy_THYM)[2:length(Methy_THYM)],1,12)
 colnames(Methy_THYM)
