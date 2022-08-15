@@ -2,25 +2,19 @@ library("ChAMP")
 library(tidyverse)
 library("ggplot2")
 #methylation
-Methy_THYM<-read_tsv(file="C:/Users/yuhon/Documents/TCGApaper/GDCdata/TCGA-THYM/legacy/TCGA.THYM.sampleMap_HumanMethylation450/HumanMethylation450",
+
+setwd("C:/Users/yuhon/Documents/TMG_methylation_paper") #laptop
+
+Methy_THYM<-read_tsv(file="./TCGApaper/GDCdata/TCGA-THYM/legacy/TCGA.THYM.sampleMap_HumanMethylation450/HumanMethylation450",
 )
 colnames(Methy_THYM)[2:length(Methy_THYM)]<-substr(colnames(Methy_THYM)[2:length(Methy_THYM)],1,12)
-colnames(Methy_THYM)
-
-head(Methy_THYM)
-
-
-Methy_annotation<-read_csv(file="C:/Users/yuhon/Documents/TCGApaper/TCGA database/数据/humanmethylation450_15017482_v1_2_trimmed.csv")
-head(Methy_annotation)
-
-View(Methy_annotation[1:100,])
 
 
 ##clinical data
 clinical_THYM<-read_tsv(file="./TCGApaper/GDCdata/TCGA-THYM/harmonized/Clinical/Clinical_Supplement/7cca5722-26cf-4ac8-a4a6-b803459f1861/nationwidechildrens.org_clinical_patient_thym_2.txt",
 )
-clinical_THYM$history_myasthenia_gravis[clinical_THYM$bcr_patient_barcode=="TCGA-3G-AB14"]<-"NO"
-clinical_THYM$history_myasthenia_gravis[clinical_THYM$bcr_patient_barcode=="TCGA-X7-A8DF"]<-"NO"
+#clinical_THYM$history_myasthenia_gravis[clinical_THYM$bcr_patient_barcode=="TCGA-3G-AB14"]<-"NO"
+#clinical_THYM$history_myasthenia_gravis[clinical_THYM$bcr_patient_barcode=="TCGA-X7-A8DF"]<-"NO"
 #View(clinical_THYM)
 meta_data<-clinical_THYM %>% dplyr::select(patient_id=bcr_patient_barcode,
                                     gender,height,weight,
@@ -42,25 +36,20 @@ row.names(met_THYM_m)<-met_THYM$sample
 
 met_THYM_m<-na.omit(met_THYM_m)
 
-
-
-
-
-
 ## methy that has
 
   ##filter
-#myload_met <- champ.filter(beta=met_THYM_m,pd=met_meta,fixOutlier = T,filterBeads = F,filterDetP = F,autoimpute = F)
+myload_met <- champ.filter(beta=met_THYM_m,pd=met_meta,fixOutlier = T,filterBeads = F,filterDetP = F,autoimpute = F)
 
   ##quality control
 #champ.QC(beta=myload_met$beta,pheno =myload_met$pd$patient_id)
   ## normalization
 #myNorm_met <- champ.norm(beta = myload_met$beta,arraytype="450K", cores=8)
+getwd()
+#write.csv(myNorm_met,"tcga_met_normalization_TCGA_database_20220813.csv")
 
-#write.csv(myNorm_met,"tcga_met_normalization_update_MG_status_20220716.csv")
-
-myNorm_met<-read.csv("tcga_met_normalization_update_MG_status_20220716.csv",check.names = F)
-row.names(myNorm_met)<-myNorm_met$gene_id
+myNorm_met<-read.csv("./analy_data/tcga_met_normalization_TCGA_database_20220813.csv",check.names = F)
+row.names(myNorm_met)<-myNorm_met[,1]
 myNorm_met<-myNorm_met[,-1] %>% as.matrix %>% na.omit(myNorm_met)
 
 myNorm_met<-na.omit(myNorm_met)
@@ -80,15 +69,54 @@ myDMP$NO_to_YES %>% filter(gene == "CHRND")
 myDMP$NO_to_YES %>% filter(gene == "CHRNG")
 myDMP$NO_to_YES %>% filter(gene == "CHRNE")
 myDMP$NO_to_YES %>% filter(gene == "CHRNB1")
-
 myDMP$NO_to_YES %>% filter(gene == "KCNA4")
 
 
-?champ.DMP
+## DMR figure NEFM
+
+## data transform into long form
+library(reshape2)
+
+## only promoter region
+myDMP_NEFM<-myDMP$NO_to_YES %>% dplyr::filter(gene == "NEFM") %>% 
+  filter ((MAPINFO < 24774000) & (MAPINFO > 24771000)) %>% select(MAPINFO,NO_AVG, YES_AVG) %>% 
+  melt(id.vars= "MAPINFO",measure.vars = c("NO_AVG","YES_AVG"))
+
+ggplot(myDMP_NEFM, aes(x = MAPINFO, y = value,color=variable))+
+  geom_point() + geom_line()
+
+  myDMP_NEFM %>% 
+  pivot_wider(names_from = variable, values_from = value) %>%
+  ggplot(aes(x = MAPINFO)) + 
+  geom_ribbon(aes(ymin = if_else(NO_AVG > YES_AVG, YES_AVG, NO_AVG), 
+                  ymax = if_else(NO_AVG > YES_AVG, NO_AVG, YES_AVG)),
+              fill = "#decbe4", colour = "black")
+
+## 非线性拟合 all region
+myDMP_NEFM<-myDMP$NO_to_YES %>% dplyr::filter(gene == "NEFM") %>% 
+  select(MAPINFO,NO_AVG, YES_AVG) %>% 
+  melt(id.vars= "MAPINFO",measure.vars = c("NO_AVG","YES_AVG"))
+
+g <- ggplot(myDMP_NEFM, aes(x = MAPINFO, y = value,color=variable))+
+  geom_point() + geom_line()
+g
+
+
+
+
+##曲线下面积
+myDMP_gse_NEFM<-myDMP_gse$no_to_yes %>% dplyr::filter(gene == "NEFM")  %>% 
+  select(MAPINFO,no_AVG, yes_AVG) %>% 
+  melt(id.vars= "MAPINFO",measure.vars = c("no_AVG","yes_AVG"))
+
+g
+
 
 #DMR 分析
 myDMR <- champ.DMR(beta=myNorm_met,pheno=met_meta$MG,method="DMRcate",cores = 10)
 
+
+champ.DMR
 dmrcate
 
 class(myNorm_met)
@@ -203,9 +231,17 @@ myannotation <- cpg.annotate(datatype = "array",
 
 dmrcoutput <- dmrcate(myannotation, lambda=1000, C=2)
 
+
+
+?dmrcate
+
 results.ranges <- extractRanges(dmrcoutput, genome = "hg19")
 
+?extractRanges
+
 View(results.ranges)
+
+results.ranges
 
 groups <- c(YES="magenta", NO="forestgreen")
 cols <- groups[met_meta$MG[1:30]]

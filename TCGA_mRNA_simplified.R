@@ -19,7 +19,7 @@ RNA_expr_THYM<-read_tsv(file="./TCGApaper/GDCdata/TCGA-THYM/legacy/Gene_expressi
 )
 
 RNA_expr_THYM<-RNA_expr_THYM[-c(60484:60488),]
-   #log2(count+1) tranform to raw count
+#log2(count+1) tranform to raw count
 RNA_expr_THYM[,2:122]<-2^RNA_expr_THYM[,2:122]-1
 
 RNA_expr_THYM$Ensembl_ID<-substr(RNA_expr_THYM$Ensembl_ID,1,15)
@@ -27,7 +27,7 @@ RNA_expr_THYM$Ensembl_ID<-substr(RNA_expr_THYM$Ensembl_ID,1,15)
 colnames(RNA_expr_THYM)[1]<-"gene_id"
 RNA_expr_THYM <- RNA_expr_THYM %>% select(order(colnames(RNA_expr_THYM)))
 
- #remove normal tissue
+#remove normal tissue
 RNA_expr_THYM<-RNA_expr_THYM %>% select(-c("TCGA-X7-A8D7-11A","TCGA-X7-A8D6-11A"))
 colnames(RNA_expr_THYM)[2:length(colnames(RNA_expr_THYM))]<-substr(colnames(RNA_expr_THYM)[2:length(colnames(RNA_expr_THYM))],1,12)
 
@@ -38,12 +38,6 @@ colnames(RNA_expr_THYM)[2:length(colnames(RNA_expr_THYM))]<-substr(colnames(RNA_
 clinical_THYM<-read_tsv(file="./TCGApaper/GDCdata/TCGA-THYM/harmonized/Clinical/Clinical_Supplement/7cca5722-26cf-4ac8-a4a6-b803459f1861/nationwidechildrens.org_clinical_patient_thym_2.txt",
 )
 
-#update myasthenia gravis information
-
-##clinical_THYM$history_myasthenia_gravis[clinical_THYM$bcr_patient_barcode=="TCGA-3G-AB14"]<-"NO"
-#clinical_THYM$history_myasthenia_gravis[clinical_THYM$bcr_patient_barcode=="TCGA-X7-A8DF"]<-"NO"
-#clinical_THYM$history_myasthenia_gravis
-
 meta_data<-clinical_THYM %>% select(patient_id=bcr_patient_barcode,
                                     gender,height,weight,
                                     histo_type = histological_type,
@@ -51,45 +45,10 @@ meta_data<-clinical_THYM %>% select(patient_id=bcr_patient_barcode,
                                     section_MG = section_myasthenia_gravis,
                                     age_patho_diagnosis = 
                                       age_at_initial_pathologic_diagnosis) %>%
-                              filter(MG == "YES"|MG =="NO" ) %>%
-                              arrange(patient_id)
+  filter(MG == "YES"|MG =="NO" ) %>%
+  arrange(patient_id)
 
 meta_data_RNA<-meta_data %>% filter(meta_data$patient_id %in% (colnames(RNA_expr_THYM)[-1]))
-
-
-#TCGA_paper_clinical_data
-
-#clinical_THYM_paper<-read_csv(file="./TCGApaper/TCGA database/TCGApaper/TCGA_paper.csv")
-
-
-
-
-#看TCGA文章里面和数据库里面标本的临床资料是否一???
-
-#clinical_THYM_paper$patient_short_barcode %in% clinical_THYM$bcr_patient_barcode
-
-#clinical_THYM_paper$patient_short_barcode %in% clinical_THYM$bcr_patient_barcode
-
-#setdiff(clinical_THYM_paper$patient_short_barcode,meta_data$patient_id)
-#"TCGA-3G-AB14" 1 MG NO dead 2 MG unknown alive  
-#"TCGA-5K-AAAP" 1 MG unknown 2 MG unknown 一致
-#"TCGA-X7-A8DF" 1 MG NO      2 MG not available
-# 根据TCGA paper内容更新
-
-#setdiff(meta_data$patient_id,clinical_THYM_paper$patient_short_barcode)
-
-#intersect(clinical_THYM_paper$patient_short_barcode,
-
-#intersect(clinical_THYM_paper$patient_short_barcode,
-#          meta_data$patient_id)
-
-#intersect(clinical_THYM_paper$patient_short_barcode[clinical_THYM_paper$history_myasthenia_gravis=="YES"],
-#          meta_data$patient_id[meta_data$MG == "YES"])
-
-#intersect(clinical_THYM_paper$patient_short_barcode[clinical_THYM_paper$history_myasthenia_gravis=="NO"],
-#          meta_data$patient_id[meta_data$MG == "NO"])
-
-
 
 ## RNA that has data
 RNA_expr_THYM_meta<- RNA_expr_THYM %>% select("gene_id",meta_data_RNA$patient_id)
@@ -195,11 +154,12 @@ ExpDataCPM <- left_join(cpmMatrixFiltered, geneNames %>% dplyr::select(gene_id, 
   dplyr::select(ensemblID=gene_id, GeneSymbol=gene_name, everything())
 
 # Filter low-expressed genes similar to https://f1000research.com/articles/5-1438
-# (although a bit stricter: keep genes that have at least 10 reads in 25% of
+# (although a bit stricter: keep genes that have at least 10 reads(total reads normalized to 10million) in 2 of
 # the samples)
 min_lib_size <- min(meta_data_RNA$lib_size)
 min_cpm <- round(10/(min_lib_size/1e+6),1)
-keep <- rowSums(cpmMatrixFiltered[,-1] > min_cpm) >= round(nrow(meta_data_RNA)*.25)
+keep <- rowSums(cpmMatrixFiltered[,-1] > min_cpm) >= 2
+#keep <- rowSums(cpmMatrixFiltered[,-1] > min_cpm) >= round(nrow(meta_data_RNA)*.25)
 #keep %>% table
 
 # Filter genes below noise level
@@ -245,11 +205,15 @@ if ( ! all(colnames(Counts)[-1] == meta_data_RNA$patient_id) ) {
 } else {
   message("No need to reorder count matrix")
 }
+rownames(Counts) <- Counts$gene_id
+
+# select only protein coding gene
 
 
+## protein_coding gene counts
 
-
-
+geneNames<-distinct(geneNames,gene_id,.keep_all=T) # join function will give error if there are duplicated item 
+Counts_pro<- Counts %>% left_join(geneNames[,c(2:4)],by="gene_id") %>% filter(gene_type == "protein_coding")
 
 
 ############################################################################################
@@ -261,16 +225,19 @@ require("DESeq2")
 Mt <- meta_data_RNA %>% filter(MG == "NO" | MG == "YES")
 Mt %>% kable(digits = 3) %>% kable_styling(bootstrap_options = "striped", full_width = F)
 
-table(Mt$MG)
+Ct <- Counts_pro[,colnames(Counts_pro) %in% Mt$patient_id]
 
-Ct <- Counts[,colnames(Counts) %in% Mt$patient_id]
-rownames(Ct) <- Counts$gene_id
+
+rownames(Ct) <- Counts_pro$gene_id
 
 Md <- as.formula(paste0("~ MG"))
 dds <- DESeq2RUN(Ct, Mt, Md)
 
+
+
+
 res_tmg_t<-results(dds, alpha = 0.05, format = "DataFrame", 
-                   independentFiltering = T, pAdjustMethod = "fdr") %>% 
+                   independentFiltering = T,pAdjustMethod = "fdr") %>% 
   data.frame() %>% dplyr::arrange(pvalue)
 
 result_tmg_t<-data.frame(res_tmg_t) %>% mutate(gene_id=rownames(.)) %>% right_join(geneNames,by="gene_id") %>% arrange(pvalue)
@@ -334,8 +301,8 @@ result_tmg_down<-result_tmg %>% filter(padj<0.1 & log2FoldChange<0)
 
 ## KEGG enrichment analysis
 KEGG_up_tmg<-enrichKEGG(na.omit(result_tmg_up$ENTREZID), organism = "hsa", keyType = "kegg",
-           pvalueCutoff = 0.05, pAdjustMethod = "none",qvalueCutoff = 1,
-           universe = na.omit(result_tmg$ENTREZID))
+                        pvalueCutoff = 0.05, pAdjustMethod = "none",qvalueCutoff = 1,
+                        universe = na.omit(result_tmg$ENTREZID))
 setReadable(KEGG_up_tmg, org.Hs.eg.db, 
             keyType = "ENTREZID")
 barplot(KEGG_up_tmg,showCategory = 23)
@@ -343,7 +310,7 @@ barplot(KEGG_up_tmg,showCategory = 23)
 
 KEGGM_up_tmg<-enrichMKEGG(na.omit(result_tmg_up$ENTREZID), organism = "hsa", minGSSize=1,
                           pvalueCutoff = 0.05, pAdjustMethod = "none",qvalueCutoff = 1,
-            universe = na.omit(result_tmg$ENTREZID))
+                          universe = na.omit(result_tmg$ENTREZID))
 setReadable(KEGGM_up_tmg, org.Hs.eg.db, 
             keyType = "ENTREZID")
 barplot(KEGG_up_tmg,showCategory = 8)
@@ -352,15 +319,15 @@ barplot(KEGG_up_tmg,showCategory = 8)
 
 ## bp
 go_up_tmg_bp <- enrichGO(gene          = na.omit(result_tmg_up$ENTREZID),
-                universe      = na.omit(result_tmg$ENTREZID),
-                OrgDb         = org.Hs.eg.db,
-                ont           = "BP",
-                pAdjustMethod = "none",
-                minGSSize = 10,
-                maxGSSize = 150,
-                pvalueCutoff  = 0.05,
-                qvalueCutoff  = 0.2,
-                readable      = TRUE)
+                         universe      = na.omit(result_tmg$ENTREZID),
+                         OrgDb         = org.Hs.eg.db,
+                         ont           = "BP",
+                         pAdjustMethod = "none",
+                         minGSSize = 10,
+                         maxGSSize = 150,
+                         pvalueCutoff  = 0.05,
+                         qvalueCutoff  = 0.2,
+                         readable      = TRUE)
 
 ?enrichGO
 barplot(go_up_tmg_bp,showCategory = 15)
@@ -368,15 +335,15 @@ barplot(go_up_tmg_bp,showCategory = 15)
 View(go_up_tmg_bp@result)
 
 go_down_tmg_bp <- enrichGO(gene          = na.omit(result_tmg_down$ENTREZID),
-                         universe      = na.omit(result_tmg$ENTREZID),
-                         OrgDb         = org.Hs.eg.db,
-                         ont           = "BP",
-                         pAdjustMethod = "none",
-                         minGSSize = 5,
-                         maxGSSize = 150,
-                         pvalueCutoff  = 0.05,
-                         qvalueCutoff  = 0.05,
-                         readable      = TRUE)
+                           universe      = na.omit(result_tmg$ENTREZID),
+                           OrgDb         = org.Hs.eg.db,
+                           ont           = "BP",
+                           pAdjustMethod = "none",
+                           minGSSize = 5,
+                           maxGSSize = 150,
+                           pvalueCutoff  = 0.05,
+                           qvalueCutoff  = 0.05,
+                           readable      = TRUE)
 View(go_up_tmg_bp@result)
 
 
@@ -397,12 +364,12 @@ barplot(go_up_tmg_mf,showCategory = 15)
 View(go_up_tmg_mf@result)
 
 go_down_tmg_mf <- enrichGO(gene          = na.omit(result_tmg_down$ENTREZID),
-                         universe      = na.omit(result_tmg$ENTREZID),
-                         OrgDb         = org.Hs.eg.db,
-                         ont           = "MF",
-                         pAdjustMethod = "none",
-                         pvalueCutoff  = 0.05,
-                         readable      = TRUE)
+                           universe      = na.omit(result_tmg$ENTREZID),
+                           OrgDb         = org.Hs.eg.db,
+                           ont           = "MF",
+                           pAdjustMethod = "none",
+                           pvalueCutoff  = 0.05,
+                           readable      = TRUE)
 barplot(go_down_tmg_mf,showCategory = 50)
 View(go_down_tmg_mf@result)
 
@@ -418,12 +385,12 @@ go_up_tmg_cc <- enrichGO(gene          = na.omit(result_tmg_up$ENTREZID),
 barplot(go_up_tmg_cc,showCategory = 15)
 
 go_down_tmg_cc <- enrichGO(gene          = na.omit(result_tmg_down$ENTREZID),
-                         universe      = na.omit(result_tmg$ENTREZID),
-                         OrgDb         = org.Hs.eg.db,
-                         ont           = "CC",
-                         pAdjustMethod = "none",
-                         pvalueCutoff  = 0.05,
-                         readable      = TRUE)
+                           universe      = na.omit(result_tmg$ENTREZID),
+                           OrgDb         = org.Hs.eg.db,
+                           ont           = "CC",
+                           pAdjustMethod = "none",
+                           pvalueCutoff  = 0.05,
+                           readable      = TRUE)
 barplot(go_down_tmg_cc,showCategory = 50)
 
 
