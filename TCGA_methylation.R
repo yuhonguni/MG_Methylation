@@ -23,45 +23,40 @@ meta_data<-clinical_THYM %>% dplyr::select(patient_id=bcr_patient_barcode,
                                     section_MG = section_myasthenia_gravis,
                                     age_patho_diagnosis = 
                                       age_at_initial_pathologic_diagnosis) %>%
-  filter(MG == "YES"|MG =="NO" ) %>%
+  dplyr::filter(MG == "YES"|MG =="NO" ) %>%
   arrange(patient_id)
-
-met_meta<-meta_data %>% filter(meta_data$patient_id %in% (colnames(Methy_THYM)[-1]))
+met_meta<-meta_data %>% dplyr::filter(meta_data$patient_id %in% (colnames(Methy_THYM)[-1]))
 
 ## methy that has data
 met_THYM<- Methy_THYM %>% dplyr::select("sample",met_meta$patient_id)
-
 met_THYM_m <- met_THYM %>% dplyr::select(-sample) %>% as.matrix()
 row.names(met_THYM_m)<-met_THYM$sample
-
 met_THYM_m<-na.omit(met_THYM_m)
 
-## methy that has
-
-  ##filter
+##filter
 myload_met <- champ.filter(beta=met_THYM_m,pd=met_meta,fixOutlier = T,filterBeads = F,filterDetP = F,autoimpute = F)
 
-  ##quality control
+##quality control
 #champ.QC(beta=myload_met$beta,pheno =myload_met$pd$patient_id)
-  ## normalization
+
+## normalization
 #myNorm_met <- champ.norm(beta = myload_met$beta,arraytype="450K", cores=8)
-getwd()
 #write.csv(myNorm_met,"tcga_met_normalization_TCGA_database_20220813.csv")
 
 myNorm_met<-read.csv("./analy_data/tcga_met_normalization_TCGA_database_20220813.csv",check.names = F)
 row.names(myNorm_met)<-myNorm_met[,1]
-myNorm_met<-myNorm_met[,-1] %>% as.matrix %>% na.omit(myNorm_met)
-
+myNorm_met<-myNorm_met[,-1] %>% as.matrix()
 myNorm_met<-na.omit(myNorm_met)
 
-head(myNorm_met)
 
-#DMPs 分析
+
+
+#DMPs analysis using CHAMP
 myDMP <- champ.DMP(beta = myNorm_met,pheno=met_meta$MG,adjPVal = 1) # DMP analysis us limma package
 
 myDMP$NO_to_YES %>% filter(gene == "TTN")
 myDMP$NO_to_YES %>% filter(gene == "CHRNA1")
-myDMP$NO_to_YES %>% filter(gene == "NEFM")
+myDMP$NO_to_YES %>% dplyr::filter(gene == "NEFM")
 myDMP$NO_to_YES %>% filter(gene == "RYR1")
 myDMP$NO_to_YES %>% filter(gene == "RYR2")
 myDMP$NO_to_YES %>% filter(gene == "RYR3")
@@ -211,7 +206,7 @@ sp + scale_x_continuous(breaks=c(CHRNA1_from,CHRNA1_to))
 sp_TTN + scale_x_continuous(breaks=c(TTN_from,TTN_to))
 sp_NEFM + scale_x_continuous(breaks=c(NEFM_from,NEFM_to)) +geom_vline(xintercept = c(NEFM_from,NEFM_to), size = 0.5,
                                                                       color = "firebrick", linetype = "dashed")
-
+cg03169018
 #dmrcate  analysis
 
 
@@ -227,11 +222,13 @@ myannotation <- cpg.annotate(datatype = "array",
                              fdr = 0.1, M_myNorm_met, design = design, coef = 2, 
                              analysis.type = "differential", annotation = c(array = "IlluminaHumanMethylation450k", 
                                                                             annotation = "ilmn12.hg19"), what = "M")
+library(DMRcate)
 
+?cpg.annotate
 
 dmrcoutput <- dmrcate(myannotation, lambda=1000, C=2)
 
-
+?GenomicRatioSet
 
 ?dmrcate
 

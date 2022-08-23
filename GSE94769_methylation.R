@@ -88,7 +88,7 @@ myNorm_met_gse<-na.omit(myNorm_met_gse)
 
 M_myNorm_met_gse<-logit2(myNorm_met_gse)
 
-## explore data MDS analysis
+##  MDS analysis
 
 pal <- brewer.pal(8,"Dark2")   #creat a color panel
 par(mfrow=c(1,2))
@@ -127,40 +127,25 @@ myannotation <- cpg.annotate(datatype = "array",
                              annotation = c(array = "IlluminaHumanMethylation450k", annotation = "ilmn12.hg19"), 
                              what = "M")
 
-# dmrcate DMR analysis
+# dmrcate DMR analysis and plot NEFM 
 
 
 dmrcoutput <- dmrcate(myannotation, lambda=1000, C=2,pcutoff = 1)
 results.ranges <- extractRanges(dmrcoutput, genome = "hg19")
 
-View(results.ranges$overlapping.genes)
-
-str_locate(results.ranges$overlapping.genes,pattern = "NEF")
-
-
-
-write.csv(results.ranges$overlapping.genes, "123.csv")
-
-meta_data_thymoma_kajiura
+which(results.ranges$overlapping.genes=="NEFM") # 5488
 
 
 groups <- c(yes="magenta", no="forestgreen")
 cols <- groups[meta_data_thymoma_kajiura$Myasthenia_gravis]
-
-which(results.ranges$overlapping.genes=="NEFM")
-
-
-results.ranges[5488,]
-
 plot<-DMR.plot(ranges=results.ranges, dmr=5488, CpGs=myNorm_met_gse, what="Beta",
                arraytype = "450K", genome="hg19",phen.col=cols)
 
-?DMR.plot
 
-#####
+##### champ DMP analysis
 
 myNorm_met<-na.omit(myNorm_met)
-
+library(ChAMP)
 myDMP_gse <- champ.DMP(beta = myNorm_met_gse,pheno=meta_data_thymoma_kajiura$Myasthenia_gravis,adjPVal = 1)
 
 
@@ -178,7 +163,7 @@ myDMP$no_to_yes %>% filter(gene == "CHRNB1")
 
 ## DMR figure NEFM
 
-## data transform into long form
+ ## data transform into long form
 library(reshape2)
 myDMP_gse_NEFM %>% 
   pivot_wider(names_from = variable, values_from = value) %>%
@@ -187,7 +172,7 @@ ggplot(aes(x = MAPINFO)) +
                   ymax = if_else(no_AVG > yes_AVG, no_AVG, yes_AVG)),
               fill = "#decbe4", colour = "black")
 
-## 非线性拟合
+ ## 非线性拟合
 myDMP_gse_NEFM<-myDMP_gse$no_to_yes %>% dplyr::filter(gene == "NEFM") %>% 
   filter ((MAPINFO < 24774000) & (MAPINFO > 24771000)) %>% select(MAPINFO,no_AVG, yes_AVG) %>% 
   melt(id.vars= "MAPINFO",measure.vars = c("no_AVG","yes_AVG"))
@@ -196,15 +181,14 @@ g <- ggplot(myDMP_gse_NEFM, aes(x = MAPINFO, y = value,color=variable))+
   geom_point() + geom_smooth()
 
 
-##曲线下面积
+ ##曲线下面积
 myDMP_gse_NEFM<-myDMP_gse$no_to_yes %>% dplyr::filter(gene == "NEFM")  %>% 
   select(MAPINFO,no_AVG, yes_AVG) %>% 
   melt(id.vars= "MAPINFO",measure.vars = c("no_AVG","yes_AVG"))
-
 g
 
 
-# DMR analysisis
+# CHAMP DMR analysisis
 
 myDMR_gse <- champ.DMR(beta=myNorm_met,pheno=as.factor(myload_met_gse$pd$Myasthenia_gravis),
                    method="Bumphunter",cores = 8,arraytype = "450K")
@@ -212,6 +196,8 @@ myDMR_gse <- champ.DMR(beta=myNorm_met,pheno=as.factor(myload_met_gse$pd$Myasthe
 
 
 write.csv(myDMR_gse$BumphunterDMR,"gse94769_met_normalization_DMR_20220809.csv")
+
+
 
 
 

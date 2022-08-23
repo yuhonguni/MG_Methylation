@@ -4,6 +4,8 @@ library(knitr)
 library(kableExtra)
 library(ggfortify)
 library(ggrepel)
+library(ggplot2)
+library(ggalt)
 
 
 
@@ -56,6 +58,9 @@ meta_data<-clinical_THYM %>% select(patient_id=bcr_patient_barcode,
 
 meta_data_RNA<-meta_data %>% filter(meta_data$patient_id %in% (colnames(RNA_expr_THYM)[-1]))
 
+meta_data_RNA$histo_type[meta_data_RNA$histo_type=="Thymoma; Type B2|Thymoma; Type B3"]<-'Thymoma; Type B3'
+meta_data_RNA$histo_type[meta_data_RNA$histo_type=="Thymoma; Type A|Thymoma; Type AB"]<-'Thymoma; Type AB'
+meta_data_RNA$histo_type[meta_data_RNA$histo_type=="Thymoma; Type B1|Thymoma; Type B2"]<-'Thymoma; Type B2'
 
 #TCGA_paper_clinical_data
 
@@ -248,10 +253,6 @@ if ( ! all(colnames(Counts)[-1] == meta_data_RNA$patient_id) ) {
 
 
 
-
-
-
-
 ############################################################################################
 require("DESeq2")
 
@@ -261,36 +262,90 @@ require("DESeq2")
 Mt <- meta_data_RNA %>% filter(MG == "NO" | MG == "YES")
 Mt %>% kable(digits = 3) %>% kable_styling(bootstrap_options = "striped", full_width = F)
 
-table(Mt$MG)
+Mt$histo_type<-factor(Mt$histo_type)
+Mt$MG<-factor(Mt$MG)
 
-Ct <- Counts[,colnames(Counts) %in% Mt$patient_id]
+Ct <- Counts[,colnames(Counts) %in% Mt$patient_id] %>% na.omit(.)
 rownames(Ct) <- Counts$gene_id
 
-Md <- as.formula(paste0("~ MG"))
+Md <- as.formula(paste0("~histo_type + MG"))
 dds <- DESeq2RUN(Ct, Mt, Md)
 
-res_tmg_t<-results(dds, alpha = 0.05, format = "DataFrame", 
-                   independentFiltering = T, pAdjustMethod = "fdr") %>% 
-  data.frame() %>% dplyr::arrange(pvalue)
-
-result_tmg_t<-data.frame(res_tmg_t) %>% mutate(gene_id=rownames(.)) %>% right_join(geneNames,by="gene_id") %>% arrange(pvalue)
+res_tmg_t<-results(dds, alpha = 0.05, format = "DataFrame", independentFiltering = T, pAdjustMethod = "bonferroni") %>% 
+  data.frame() %>% mutate(gene_id=rownames(.)) %>% dplyr::arrange(pvalue) %>% 
+  left_join(geneNames,by="gene_id") 
 
 
-result_tmg_t[result_tmg_t$gene_name=='CHRNA1',]
+res_tmg_t[res_tmg_t$gene_name=='CHRNA1',]
+res_tmg_t %>% filter(res_tmg_t$padj<0.05 & res_tmg_t$log2FoldChange>0)
+res_tmg_t %>% filter(res_tmg_t$padj<0.05 & res_tmg_t$log2FoldChange<0)
 
+
+colData(dds)
+
+#################################################################################
+## PCA analyusis
+
+rld<-vst(dds)   #rld_2<-rlog(dds) slow
+plotPCA(rld,intgroup = "MG") +stat_ellipse(level = 0.9)
+
+
+library(RColorBrewer)
+pal <- brewer.pal(8,"Dark2") 
+plotMDS(rld@assays@data@listData[[1]], top=500, gene.selection="common", 
+        col=pal[Mt$MG],pch=19) 
+
+## tSNE analysis
+library(Rtsne)
+rld_t<-rld@assays@data@listData[[1]]
+rld_t_v<-rowVars(rld_t)
+rld_t<-rld_t %>% cbind(rld_t_v) %>% as.data.frame() %>% arrange(desc(rld_t_v)) %>% dplyr::select(-rld_t_v)
+
+
+set.seed(321) # 设置随机数种子
+
+tsne_out = Rtsne(
+  t(rld_t[1:500,]),
+  dims = 2,
+  pca = T,
+  max_iter = 5000,
+  theta = 0.1,
+  perplexity = 20,
+  verbose = F
+) 
+
+
+tsne_result = as.data.frame(tsne_out$Y)
+colnames(tsne_result) = c("tSNE1","tSNE2")
+row.names(tsne_result)<-Mt$patient_id
+
+write.csv(tsne_result,"tsne_tcga.csv")
+
+ggplot(tsne_result,aes(tSNE1,tSNE2,color=Mt$MG)) +
+  geom_point(size=2) +stat_ellipse(level = 0.5)
+
+
+ggplot(tsne_result,aes(tSNE1,tSNE2,color=Mt$histo_type)) +
+  geom_point(ize=2) ## +stat_ellipse(level = 0.5)
+
+
+
+######################################################################################
 #CHRNA1 foldchange
 
-lg2fc_chrna1<-result_tmg_t[result_tmg_t$gene_name=='CHRNA1',]$log2FoldChange
+lg2fc_chrna1<-res_tmg_t[res_tmg_t$gene_name=='CHRNA1',]$log2FoldChange
 2^lg2fc_chrna1
 
-result_tmg_t[result_tmg_t$gene_name=='CHRNG',]
+res_tmg_t[res_tmg_t$gene_name=='CHRNG',]
+res_tmg_t[res_tmg_t$gene_name=='GABRA5',]
 
-result_tmg_t[result_tmg_t$gene_name=='NEFM',]# "similiarity with CHRNA1"
+res_tmg_t[res_tmg_t$gene_name=='NEFM',]# "similiarity with CHRNA1"
+res_tmg_t[res_tmg_t$gene_name=='NEFL',]
 
-result_tmg_t[result_tmg_t$gene_name=='RYR1',]
-result_tmg_t[result_tmg_t$gene_name=='RYR2',]
+res_tmg_t[res_tmg_t$gene_name=='RYR1',]
+res_tmg_t[res_tmg_t$gene_name=='RYR2',]
 
-result_tmg_t[result_tmg_t$gene_name=='RYR3',]
+res_tmg_t[res_tmg_t$gene_name=='RYR3',]
 
 Counts[Counts$gene_id=="ENSG00000138435",]## CHRNA1 foldchange
 
@@ -314,6 +369,8 @@ View(meta_data)
 result_tmg_t[result_tmg_t$gene_name=='TTN',]
 Counts[Counts$gene_id=="ENSG00000155657",]
 
+#####################################################################################################
+
 ## pathway analysis 
 
 library(clusterProfiler)
@@ -326,58 +383,57 @@ en2ENSE<-AnnotationDbi::select(org.Hs.eg.db,keys=k,
                                columns=c("ENTREZID",'SYMBOL'),
                                keytype = 'ENSEMBL')
 
-result_tmg <- result_tmg_t %>% left_join(en2ENSE[,1:2],by=(c('gene_id'='ENSEMBL'))) %>% 
+result_tmg <- res_tmg_t %>% left_join(en2ENSE[,1:2],by=(c('gene_id'='ENSEMBL'))) %>% 
   dplyr::select(gene_name,gene_id,ENTREZID,gene_type,log2FoldChange,pvalue,padj)
 
-result_tmg_up<-result_tmg %>% filter(padj<0.1 & log2FoldChange>0)
+result_tmg_up<-result_tmg  %>% filter(padj<0.05 & log2FoldChange>0)
 result_tmg_down<-result_tmg %>% filter(padj<0.1 & log2FoldChange<0)
 
+
+
+
 ## KEGG enrichment analysis
-KEGG_up_tmg<-enrichKEGG(na.omit(result_tmg_up$ENTREZID), organism = "hsa", keyType = "kegg",
+KEGG_up_tmg<-enrichKEGG(result_tmg_up$ENTREZID[1:100], organism = "hsa", keyType = "kegg",
            pvalueCutoff = 0.05, pAdjustMethod = "none",qvalueCutoff = 1,
            universe = na.omit(result_tmg$ENTREZID))
-setReadable(KEGG_up_tmg, org.Hs.eg.db, 
-            keyType = "ENTREZID")
-barplot(KEGG_up_tmg,showCategory = 23)
+barplot(KEGG_up_tmg,showCategory = 28)
 
 
-KEGGM_up_tmg<-enrichMKEGG(na.omit(result_tmg_up$ENTREZID), organism = "hsa", minGSSize=1,
+KEGGM_down_tmg<-enrichMKEGG(result_tmg_down$ENTREZID[1:100], organism = "hsa", minGSSize=1,
                           pvalueCutoff = 0.05, pAdjustMethod = "none",qvalueCutoff = 1,
             universe = na.omit(result_tmg$ENTREZID))
-setReadable(KEGGM_up_tmg, org.Hs.eg.db, 
-            keyType = "ENTREZID")
-barplot(KEGG_up_tmg,showCategory = 8)
+barplot(KEGGM_down_tmg,showCategory = 8)
 
 ##  GO analysis
 
 ## bp
-go_up_tmg_bp <- enrichGO(gene          = na.omit(result_tmg_up$ENTREZID),
-                universe      = na.omit(result_tmg$ENTREZID),
+go_up_tmg_bp <- enrichGO(gene          = result_tmg_up$ENTREZID[1:100],
+                universe      = result_tmg$ENTREZID,
                 OrgDb         = org.Hs.eg.db,
                 ont           = "BP",
                 pAdjustMethod = "none",
-                minGSSize = 10,
+                minGSSize = 3,
                 maxGSSize = 150,
                 pvalueCutoff  = 0.05,
-                qvalueCutoff  = 0.2,
+                qvalueCutoff  = 0.05,
                 readable      = TRUE)
+go_up_tmg_bp
 
-?enrichGO
-barplot(go_up_tmg_bp,showCategory = 15)
+barplot(go_up_tmg_bp,showCategory = 40)
 
 View(go_up_tmg_bp@result)
 
-go_down_tmg_bp <- enrichGO(gene          = na.omit(result_tmg_down$ENTREZID),
-                         universe      = na.omit(result_tmg$ENTREZID),
+go_down_tmg_bp <- enrichGO(gene          = result_tmg_down$ENTREZID[1:100],
+                           universe      = result_tmg$ENTREZID,
                          OrgDb         = org.Hs.eg.db,
                          ont           = "BP",
                          pAdjustMethod = "none",
-                         minGSSize = 5,
+                         minGSSize = 3,
                          maxGSSize = 150,
                          pvalueCutoff  = 0.05,
                          qvalueCutoff  = 0.05,
                          readable      = TRUE)
-View(go_up_tmg_bp@result)
+go_down_tmg_bp
 
 
 barplot(go_down_tmg_bp,showCategory = 60)
@@ -386,18 +442,21 @@ View(go_down_tmg_bp@result)
 
 
 ## mf
-go_up_tmg_mf <- enrichGO(gene          = na.omit(result_tmg_up$ENTREZID),
-                         universe      = na.omit(result_tmg$ENTREZID),
+go_up_tmg_mf <- enrichGO(gene          = result_tmg_up$ENTREZID[1:100],
+                         universe      = result_tmg$ENTREZID,
                          OrgDb         = org.Hs.eg.db,
                          ont           = "MF",
                          pAdjustMethod = "none",
+                         minGSSize = 3,
+                         maxGSSize = 150,
                          pvalueCutoff  = 0.05,
                          readable      = TRUE)
+go_up_tmg_mf 
 barplot(go_up_tmg_mf,showCategory = 15)
 View(go_up_tmg_mf@result)
 
-go_down_tmg_mf <- enrichGO(gene          = na.omit(result_tmg_down$ENTREZID),
-                         universe      = na.omit(result_tmg$ENTREZID),
+go_down_tmg_mf <- enrichGO(gene          = result_tmg_down$ENTREZID[1:100],
+                           universe      = result_tmg$ENTREZID,
                          OrgDb         = org.Hs.eg.db,
                          ont           = "MF",
                          pAdjustMethod = "none",
@@ -408,8 +467,8 @@ View(go_down_tmg_mf@result)
 
 
 ## cc
-go_up_tmg_cc <- enrichGO(gene          = na.omit(result_tmg_up$ENTREZID),
-                         universe      = na.omit(result_tmg$ENTREZID),
+go_up_tmg_cc <- enrichGO(gene          = result_tmg_up$ENTREZID[1:100],
+                         universe      = result_tmg$ENTREZID,
                          OrgDb         = org.Hs.eg.db,
                          ont           = "CC",
                          pAdjustMethod = "none",
@@ -417,8 +476,10 @@ go_up_tmg_cc <- enrichGO(gene          = na.omit(result_tmg_up$ENTREZID),
                          readable      = TRUE)
 barplot(go_up_tmg_cc,showCategory = 15)
 
-go_down_tmg_cc <- enrichGO(gene          = na.omit(result_tmg_down$ENTREZID),
-                         universe      = na.omit(result_tmg$ENTREZID),
+View(go_up_tmg_cc@result)
+
+go_down_tmg_cc <- enrichGO(gene          = result_tmg_down$ENTREZID[1:100],
+                           universe      = result_tmg$ENTREZID,
                          OrgDb         = org.Hs.eg.db,
                          ont           = "CC",
                          pAdjustMethod = "none",
@@ -427,69 +488,6 @@ go_down_tmg_cc <- enrichGO(gene          = na.omit(result_tmg_down$ENTREZID),
 barplot(go_down_tmg_cc,showCategory = 50)
 
 
-
-
-?enrichGO
-
-
-## GO analysis
-GO_ws5a_cp2a_enrich<-function(a) {
-  ego <- enrichGO(gene          = de_ws5a_cp2a_list[[a]]$ENTREZID,
-                  universe      = bg_genes,
-                  OrgDb         = org.Hs.eg.db,
-                  ont           = "ALL",
-                  pAdjustMethod = "BH",
-                  minGSSize = 20,
-                  maxGSSize = 150,
-                  pvalueCutoff  = 0.01,
-                  qvalueCutoff  = 0.05,
-                  readable      = TRUE)
-  return(ego)
-}
-
-
-
-## KEGG module analysis
-MKEGG_ws5a_cp2a_enrich<-function(a) {
-  enrich <- enrichMKEGG(de_ws5a_cp2a_list[[a]]$ENTREZID, organism = "hsa", minGSSize=1,
-                        universe = bg_genes)
-  enrich <- setReadable(enrich, org.Hs.eg.db, 
-                        keyType = "ENTREZID")
-  return(enrich)
-}
-
-heatplot(MKEGG_ws5a_cp2a_enrich('nsc_up'))
-heatplot(MKEGG_ws5a_cp2a_enrich('nsc_down'))
-
-heatplot(MKEGG_ws5a_cp2a_enrich('ipsc_up'))
-heatplot(MKEGG_ws5a_cp2a_enrich('ipsc_down'))
-
-##import wiki pathway annotation file 
-
-wpgmtfile <- system.file("extdata/wikipathways-20180810-gmt-Homo_sapiens.gmt", package="clusterProfiler")
-wp2gene <- read.gmt(wpgmtfile)
-wp2gene <- wp2gene %>% tidyr::separate(ont, c("name","version","wpid","org"), "%") %>% 
-  filter(gene %in% Gene_ID_ENTREZ$ENTREZID)
-
-wpid2gene <- wp2gene %>% dplyr::select(wpid, gene) #TERM2GENE
-wpid2name <- wp2gene %>% dplyr::select(wpid, name) #TERM2NAME
-
-
-## wiki enrichment analysis
-wiki_ws5a_cp2a_enrich<-function(a) {
-  enrich <- enricher(de_ws5a_cp2a_list[[a]]$ENTREZID, pvalueCutoff = 0.05,pAdjustMethod = "BH",
-                     qvalueCutoff = 0.05, minGSSize = 10, maxGSSize = 200,
-                     TERM2GENE = wpid2gene, TERM2NAME = wpid2name)
-  enrich <- setReadable(enrich, org.Hs.eg.db, 
-                        keyType = "ENTREZID")
-  return(enrich)
-}
-
-heatplot(wiki_ws5a_cp2a_enrich('nsc_up'),showCategory = 23)
-barplot(wiki_ws5a_cp2a_enrich('nsc_down'),showCategory = 12)
-
-wiki_ws5a_cp2a_enrich('ipsc_up')
-wiki_ws5a_cp2a_enrich('ipsc_down')
 
 
 
